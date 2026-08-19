@@ -5,6 +5,7 @@ import { garages, driverProfiles, garageStaff } from "@auto-os/db/src/schema/ten
 import { eq } from "drizzle-orm"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { revalidatePath } from "next/cache"
+import { cookies } from "next/headers" // <-- Injecting cookies
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // 1. VERIFY AUTHENTICATION
@@ -15,7 +16,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // 2. FETCH ALL POSSIBLE IDENTITIES
   const activeGarageOwner = await db.select().from(garages).where(eq(garages.ownerId, user.id)).limit(1).then(res => res[0])
   
-  // NEW: Check if they are invited staff, and pull the garage data they are linked to
   const activeStaffRecord = await db
     .select({
       staffInfo: garageStaff,
@@ -29,45 +29,92 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const activeDriver = await db.select().from(driverProfiles).where(eq(driverProfiles.userId, user.id)).limit(1).then(res => res[0])
 
-  // 3. RESOLVE WORKSPACE CONTEXT
   if (!activeGarageOwner && !activeStaffRecord && !activeDriver) {
     redirect("/onboarding")
   }
 
-  // Determine effective role and workspace name
-  let role: "garage_owner" | "garage_staff" | "driver" = "driver"
-  let workspaceName = activeDriver?.fullName || "Personal Passport"
-  let staffClearance = null
-
+  // 3. COMPILE AVAILABLE WORKSPACES
+  // We build an array of all accounts the user owns, ordered by priority clearance.
+  const availableWorkspaces = []
+  
   if (activeGarageOwner) {
-    role = "garage_owner"
-    workspaceName = activeGarageOwner.name
-  } else if (activeStaffRecord && activeStaffRecord.staffInfo.status === 'active') {
-    role = "garage_staff"
-    workspaceName = activeStaffRecord.workspace.name
-    staffClearance = activeStaffRecord.staffInfo.role // e.g., 'manager', 'mechanic', 'intern'
+    availableWorkspaces.push({
+      id: `owner_${activeGarageOwner.id}`,
+      role: "garage_owner" as const,
+      name: activeGarageOwner.name,
+      clearance: "owner"
+    })
+  }
+  
+  if (activeStaffRecord && activeStaffRecord.staffInfo.status === 'active') {
+    availableWorkspaces.push({
+      id: `staff_${activeStaffRecord.workspace.id}`,
+      role: "garage_staff" as const,
+      name: activeStaffRecord.workspace.name,
+      clearance: activeStaffRecord.staffInfo.role
+    })
+  }
+  
+  if (activeDriver) {
+    availableWorkspaces.push({
+      id: `driver_${activeDriver.id}`,
+      role: "driver" as const,
+      name: "Personal Passport",
+      clearance: null
+    })
   }
 
+  // 4. READ COOKIE & RESOLVE ACTIVE WORKSPACE
+  const cookieStore = await cookies()
+  const savedWorkspaceId = cookieStore.get('autoos_active_workspace')?.value
+
+  // Find the requested workspace, or default to the highest clearance one (index 0)
+  let activeWorkspace = availableWorkspaces.find(w => w.id === savedWorkspaceId)
+  if (!activeWorkspace) {
+    activeWorkspace = availableWorkspaces[0]
+  }
+
+  // 5. PACKAGE USER DATA FOR THE SHELL
   const userData = {
     name: user.user_metadata?.full_name || user.email || "User",
     email: user.email || "",
     avatarUrl: user.user_metadata?.avatar_url || "",
-    workspaceName,
-    staffClearance
+    workspaceName: activeWorkspace.name,
+    staffClearance: activeWorkspace.clearance,
+    availableWorkspaces,            // <-- Passed to the shell to build the dropdown
+    activeWorkspaceId: activeWorkspace.id 
   }
 
-  // 4. SECURE SERVER ACTION FOR LOGOUT
+  // 6. SECURE SERVER ACTIONS
   async function signOutAction() {
     "use server"
     const supabaseAuth = await createClient()
     await supabaseAuth.auth.signOut()
+    
+    // Wipe the workspace cookie on logout
+    const cookieStore = await cookies()
+    cookieStore.delete('autoos_active_workspace')
+    
     revalidatePath("/", "layout")
     redirect("/login")
   }
 
-  // 5. RENDER THE RESPONSIVE SHELL
+  // NEW: Secure Workspace Switcher Action
+  async function switchWorkspaceAction(workspaceId: string) {
+    "use server"
+    const cookieStore = await cookies()
+    cookieStore.set('autoos_active_workspace', workspaceId, { path: '/' })
+    revalidatePath("/dashboard", "layout")
+  }
+
+  // 7. RENDER THE RESPONSIVE SHELL
   return (
-    <DashboardShell role={role} user={userData} signOutAction={signOutAction}>
+    <DashboardShell 
+      role={activeWorkspace.role} 
+      user={userData} 
+      signOutAction={signOutAction}
+      switchWorkspaceAction={switchWorkspaceAction}
+    >
       {children}
     </DashboardShell>
   )

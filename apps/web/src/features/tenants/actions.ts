@@ -4,8 +4,9 @@ import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { db } from '@/lib/db'
 import { garages, garageStaff } from '@auto-os/db/src/schema/tenants.schema'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers' // <-- NEW: Import headers
 
 export type StaffProvisionResponse = {
   success: boolean;
@@ -23,46 +24,66 @@ export async function provisionStaffAccount(prevState: StaffProvisionResponse | 
     return { success: false, error: "Access Denied. Only Garage Owners can provision staff accounts." }
   }
 
-  // 2. EXTRACT DATA
   const fullName = (formData.get('fullName') as string).trim()
   const email = (formData.get('email') as string).toLowerCase().trim()
-  const password = formData.get('password') as string
   const role = formData.get('role') as "manager" | "mechanic" | "intern"
 
-  if (password.length < 8) {
-    return { success: false, error: "Security Policy: Staff passwords must be at least 8 characters long." }
-  }
-
   try {
-    // 3. SECURELY CREATE THE AUTHENTICATION IDENTITY (Bypasses active session)
     const adminAuthClient = createAdminClient()
-    const { data: newAuthUser, error: authError } = await adminAuthClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // Auto-confirm so they can log in instantly
-      user_metadata: { full_name: fullName }
+    
+    // 2. DYNAMIC HOST RESOLUTION: Adapts to Localhost, Mobile IP, Ngrok, or Vercel
+    const headersList = await headers()
+    const forwardedHost = headersList.get('x-forwarded-host')
+    const forwardedProto = headersList.get('x-forwarded-proto')
+    const host = forwardedHost || headersList.get('host') || 'localhost:3000'
+    const protocol = forwardedProto || (host.includes('localhost') || host.includes('192.168.') ? 'http' : 'https')
+    const resolvedOrigin = `${protocol}://${host}`
+
+    // 3. SECURE INVITATION DISPATCH
+    const { data: inviteData, error: inviteError } = await adminAuthClient.auth.admin.inviteUserByEmail(email, {
+      data: { full_name: fullName },
+      redirectTo: `${resolvedOrigin}/auth/callback?next=/update-password` // <-- Forces route to the password setup page
     })
 
-    if (authError) {
-      if (authError.message.includes("already exists")) {
-        return { success: false, error: "An AutoOS account already exists with this email. Unified Identity linking will be supported in a future update." }
+    if (inviteError) {
+      if (inviteError.message.includes("already exists") || inviteError.message.includes("already registered")) {
+         const { data: existingUser } = await adminAuthClient.auth.admin.listUsers()
+         const targetUser = existingUser.users.find(u => u.email === email)
+         
+         if (targetUser) {
+           const existingStaff = await db.select().from(garageStaff)
+              .where(and(eq(garageStaff.userId, targetUser.id), eq(garageStaff.garageId, activeGarage.id)))
+              .limit(1).then(res => res[0])
+
+           if (existingStaff) {
+             return { success: false, error: "This user is already provisioned at this garage." }
+           }
+
+           await db.insert(garageStaff).values({
+             garageId: activeGarage.id,
+             userId: targetUser.id,
+             role: role,
+             status: "active",
+           })
+           revalidatePath('/dashboard')
+           return { success: true }
+         }
       }
-      return { success: false, error: authError.message }
+      return { success: false, error: inviteError.message }
     }
 
-    if (!newAuthUser.user) {
-      return { success: false, error: "Failed to generate a secure user identity." }
+    if (!inviteData.user) {
+      return { success: false, error: "Failed to generate a secure user invitation." }
     }
 
-    // 4. LINK THE NEW IDENTITY TO THE GARAGE (RBAC Mapping)
+    // 4. Link the newly invited identity to the garage
     await db.insert(garageStaff).values({
       garageId: activeGarage.id,
-      userId: newAuthUser.user.id,
+      userId: inviteData.user.id,
       role: role,
       status: "active",
     })
 
-    // 5. TRIGGER REAL-TIME UI REFRESH
     revalidatePath('/dashboard')
     
     return { success: true }
