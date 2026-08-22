@@ -5,7 +5,7 @@ import { garages, driverProfiles, garageStaff } from "@auto-os/db/src/schema/ten
 import { eq } from "drizzle-orm"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { revalidatePath } from "next/cache"
-import { cookies } from "next/headers" // <-- Injecting cookies
+import { cookies } from "next/headers"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // 1. VERIFY AUTHENTICATION
@@ -64,9 +64,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     })
   }
 
-  // 4. READ COOKIE & RESOLVE ACTIVE WORKSPACE
+  // 4. SMART USER-BOUND COOKIE READER
   const cookieStore = await cookies()
-  const savedWorkspaceId = cookieStore.get('autoos_active_workspace')?.value
+  const userCookieKey = `autoos_workspace_${user.id}`
+  const savedWorkspaceId = cookieStore.get(userCookieKey)?.value
 
   // Find the requested workspace, or default to the highest clearance one (index 0)
   let activeWorkspace = availableWorkspaces.find(w => w.id === savedWorkspaceId)
@@ -81,7 +82,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     avatarUrl: user.user_metadata?.avatar_url || "",
     workspaceName: activeWorkspace.name,
     staffClearance: activeWorkspace.clearance,
-    availableWorkspaces,            // <-- Passed to the shell to build the dropdown
+    availableWorkspaces,            
     activeWorkspaceId: activeWorkspace.id 
   }
 
@@ -91,19 +92,29 @@ export default async function DashboardLayout({ children }: { children: React.Re
     const supabaseAuth = await createClient()
     await supabaseAuth.auth.signOut()
     
-    // Wipe the workspace cookie on logout
-    const cookieStore = await cookies()
-    cookieStore.delete('autoos_active_workspace')
+    // CRITICAL FIX: We NO LONGER delete the cookie here. 
+    // It remains in the browser safely bound to their specific user.id.
     
     revalidatePath("/", "layout")
     redirect("/login")
   }
 
-  // NEW: Secure Workspace Switcher Action
+  // NEW: Secure User-Bound Workspace Switcher Action
   async function switchWorkspaceAction(workspaceId: string) {
     "use server"
-    const cookieStore = await cookies()
-    cookieStore.set('autoos_active_workspace', workspaceId, { path: '/' })
+    const supabaseAuth = await createClient()
+    const { data: { user: activeUser } } = await supabaseAuth.auth.getUser()
+    
+    if (activeUser) {
+      const cookieStore = await cookies()
+      // Store the preference securely bound to the user for 30 days
+      cookieStore.set(`autoos_workspace_${activeUser.id}`, workspaceId, { 
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30, // 30 days 
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+      })
+    }
     revalidatePath("/dashboard", "layout")
   }
 

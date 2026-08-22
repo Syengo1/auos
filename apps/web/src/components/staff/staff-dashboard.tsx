@@ -3,7 +3,9 @@
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Wrench, FileSpreadsheet, Plus, ClipboardList, ShieldCheck, BadgeCheck, Clock } from "lucide-react"
 import { AddVehicleDialog } from "@/features/vehicles/components/add-vehicle-dialog"
+import { CreateJobDialog } from "@/features/job-cards/components/create-job-dialog"
 import { cn } from "@/lib/utils"
+import type { FleetVehicle } from "../garage/garage-data-tabs"
 
 // 1. DEFINE EXACT TYPE FOR RECENT EVENTS
 type RecentEvent = {
@@ -16,15 +18,17 @@ type RecentEvent = {
 
 type StaffDashboardProps = {
   userName: string;
-  staffRecord: {
-    staffInfo: { role: string; status: string; };
-    workspace: { name: string; isVerified: boolean | null; };
+  staffRecord: { 
+    staffInfo: { role: string; status: string; }; 
+    // FIX: Added 'id: string' to the workspace type definition
+    workspace: { id: string; name: string; isVerified: boolean | null; }; 
   };
-  // 2. REPLACE 'any[]' WITH STRICT TYPE
   recentEvents: RecentEvent[];
+  // FIX: Applied the strict FleetVehicle type instead of any[]
+  fleetVehicles: FleetVehicle[]; 
 }
 
-export function StaffDashboard({ userName, staffRecord, recentEvents }: StaffDashboardProps) {
+export function StaffDashboard({ userName, staffRecord, recentEvents, fleetVehicles }: StaffDashboardProps) {
   const { workspace, staffInfo } = staffRecord;
 
   return (
@@ -122,13 +126,16 @@ export function StaffDashboard({ userName, staffRecord, recentEvents }: StaffDas
                </div>
              </AddVehicleDialog>
 
-             <Button size="lg" variant="outline" className="w-full justify-start h-16 shadow-sm group">
-               <Wrench className="mr-3 size-6 text-primary group-hover:scale-110 transition-transform" />
-               <div className="flex flex-col items-start">
-                  <span className="font-semibold text-base">Log Service Event</span>
-                  <span className="text-[10px] text-muted-foreground font-normal">Record maintenance or repair</span>
-                </div>
-             </Button>
+             {/* NEW: Activated Service Trigger */}
+             <CreateJobDialog garageId={workspace.id} fleetVehicles={fleetVehicles}>
+               <div className={cn(buttonVariants({ size: "lg", variant: "outline" }), "w-full justify-start h-16 shadow-sm group cursor-pointer")}>
+                 <Wrench className="mr-3 size-6 text-primary group-hover:scale-110 transition-transform" />
+                 <div className="flex flex-col items-start">
+                   <span className="font-semibold text-base">Log Service Event</span>
+                   <span className="text-[10px] text-muted-foreground font-normal">Record maintenance or repair</span>
+                 </div>
+               </div>
+             </CreateJobDialog>
 
              <Button size="lg" variant="outline" className="w-full justify-start h-16 shadow-sm group">
                <FileSpreadsheet className="mr-3 size-6 text-primary group-hover:scale-110 transition-transform" />

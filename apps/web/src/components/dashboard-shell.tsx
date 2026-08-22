@@ -59,9 +59,12 @@ export function DashboardShell({ children, role, user, signOutAction, switchWork
   const hasMultiple = workspaces.length > 1
 
   return (
-    <div className="flex min-h-svh w-full bg-muted/10">
+    // FIX 1: Strict h-svh and overflow-hidden mathematically locks the entire viewport
+    <div className="flex h-svh w-full bg-muted/10 overflow-hidden">
+      
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex w-64 flex-col border-r bg-background/95 backdrop-blur sticky top-0 h-svh">
+      {/* FIX 2: shrink-0 prevents the sidebar from being crushed by the main content */}
+      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-background/95 backdrop-blur sticky top-0 h-svh z-20">
         
         {/* Workspace Brand & Switcher */}
         <div className="flex flex-col border-b p-4 relative">
@@ -170,9 +173,12 @@ export function DashboardShell({ children, role, user, signOutAction, switchWork
         </div>
       </aside>
 
-      {/* MOBILE LAYOUT */}
-      <div className="flex flex-1 flex-col">
-        <header className="md:hidden flex h-14 items-center justify-between border-b bg-background/95 px-4 sticky top-0 z-40 backdrop-blur">
+      {/* MAIN CONTENT AREA */}
+      {/* FIX 3: Relative flex-column that prevents internal content from bleeding past 100vh */}
+      <div className="flex flex-1 flex-col h-full overflow-hidden relative">
+        
+        {/* MOBILE HEADER */}
+        <header className="md:hidden flex h-14 shrink-0 items-center justify-between border-b bg-background/95 px-4 z-40 backdrop-blur">
           <span className="font-semibold flex items-center gap-2">
             <ShieldCheck className="size-5 text-primary"/> AutoOS
           </span>
@@ -188,11 +194,14 @@ export function DashboardShell({ children, role, user, signOutAction, switchWork
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+        {/* THE CANVAS */}
+        {/* FIX 4: Explicit flex-col and overflow-y-auto. Standard pages scroll here. Kanban boards inherit the height. */}
+        <main className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
           {children}
         </main>
 
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 flex h-16 items-center justify-around border-t bg-background/85 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] px-2">
+        {/* MOBILE NAV */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 flex h-16 shrink-0 items-center justify-around border-t bg-background/85 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] px-2">
           {navItems.map((item) => {
             const isActive = pathname === item.href
             return (

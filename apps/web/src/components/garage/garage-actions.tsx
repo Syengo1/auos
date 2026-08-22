@@ -4,9 +4,11 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Wrench, FileSpreadsheet, Plus, UserPlus } from "lucide-react"
 import { AddVehicleDialog } from "@/features/vehicles/components/add-vehicle-dialog"
 import { AddStaffDialog } from "@/components/add-staff-dialog"
+import { CreateJobDialog } from "@/features/job-cards/components/create-job-dialog"
 import { cn } from "@/lib/utils"
+import type { FleetVehicle } from "./garage-data-tabs"
 
-export function GarageActions() {
+export function GarageActions({ garageId, fleetVehicles }: { garageId: string, fleetVehicles: FleetVehicle[] }) {
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-sm">
       <h3 className="font-semibold tracking-tight text-sm uppercase text-muted-foreground mb-4">Command Center</h3>
@@ -35,20 +37,20 @@ export function GarageActions() {
         </AddStaffDialog>
         
         <div className="relative mt-2 mb-1">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
+          <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
           <div className="relative flex justify-center text-[10px] uppercase">
-            <span className="bg-card px-2 text-muted-foreground font-medium tracking-wider">
-              Service Operations
-            </span>
+            <span className="bg-card px-2 text-muted-foreground font-medium tracking-wider">Service Operations</span>
           </div>
         </div>
 
-        <Button size="lg" variant="outline" className="w-full justify-start h-12 shadow-sm">
-          <Wrench className="mr-3 size-4 text-primary" />
-          Log Service Event
-        </Button>
+        {/* NEW: Activated Service Logging Trigger */}
+        <CreateJobDialog garageId={garageId} fleetVehicles={fleetVehicles}>
+          <div className={cn(buttonVariants({ size: "lg", variant: "outline" }), "w-full justify-start h-12 cursor-pointer shadow-sm")}>
+            <Wrench className="mr-3 size-4 text-primary" />
+            Log Service Event
+          </div>
+        </CreateJobDialog>
+
         <Button size="lg" variant="outline" className="w-full justify-start h-12 shadow-sm">
           <FileSpreadsheet className="mr-3 size-4 text-primary" />
           Generate Invoice

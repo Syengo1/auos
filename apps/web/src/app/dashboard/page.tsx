@@ -19,7 +19,6 @@ type RecentEvent = {
   verificationTier: string;
 }
 
-
 type DriverVehicle = {
   id: string;
   regNumber: string;
@@ -30,7 +29,6 @@ type DriverVehicle = {
   fuel: string | null;
 }
 
-// --- NEW: STRICT TYPES FOR VIEW COMPONENTS ---
 type ActiveGarage = {
   id: string;
   name: string;
@@ -69,7 +67,9 @@ export default async function DashboardPage() {
 
   // 2. Read active cookie to determine what to render
   const cookieStore = await cookies()
-  const savedWorkspaceId = cookieStore.get('autoos_active_workspace')?.value
+  // FIX: Unify the cookie key to match layout.tsx perfectly
+  const userCookieKey = `autoos_workspace_${user.id}`
+  const savedWorkspaceId = cookieStore.get(userCookieKey)?.value
 
   let activeRole: "garage_owner" | "garage_staff" | "driver" = "driver"
   if (savedWorkspaceId?.startsWith("owner_") && activeGarage) {
@@ -92,7 +92,6 @@ export default async function DashboardPage() {
       <WelcomeModal name={firstName} avatarUrl={user.user_metadata?.avatar_url || ""} />
       
       <div className="mx-auto max-w-6xl w-full">
-        {/* RENDER STRICTLY ONE VIEW ACCORDING TO ACTIVE CONTEXT */}
         {activeRole === "garage_owner" && activeGarage && (
           <GarageOwnerView garage={activeGarage} />
         )}
@@ -139,7 +138,14 @@ async function StaffView({ staffRecord, firstName }: { staffRecord: ActiveStaffR
     .from(vehicleEvents).innerJoin(vehicles, eq(vehicleEvents.vehicleId, vehicles.id))
     .where(eq(vehicleEvents.garageId, staffRecord.workspace.id)).orderBy(desc(vehicleEvents.dateOfEvent)).limit(10)
 
-  return <StaffDashboard staffRecord={staffRecord} recentEvents={recentEvents} userName={firstName} />
+  // FIX: Fetch fleet vehicles for the staff view
+  const fleetVehicles: FleetVehicle[] = await db
+    .select({ id: vehicles.id, regNumber: vehicles.registrationNumber, make: vehicleMakes.name, model: vehicleModels.name })
+    .from(vehicleEvents).innerJoin(vehicles, eq(vehicleEvents.vehicleId, vehicles.id)).innerJoin(vehicleMakes, eq(vehicles.makeId, vehicleMakes.id)).innerJoin(vehicleModels, eq(vehicles.modelId, vehicleModels.id))
+    .where(eq(vehicleEvents.garageId, staffRecord.workspace.id)).groupBy(vehicles.id, vehicles.registrationNumber, vehicleMakes.name, vehicleModels.name)
+
+  // FIX: Pass fleetVehicles down
+  return <StaffDashboard staffRecord={staffRecord} recentEvents={recentEvents} fleetVehicles={fleetVehicles} userName={firstName} />
 }
 
 async function DriverView({ driver, userId }: { driver: ActiveDriver; userId: string }) {

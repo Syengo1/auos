@@ -6,10 +6,17 @@ import { GarageActions } from "./garage/garage-actions"
 import { GarageDataTabs, type StaffMember, type FleetVehicle } from "./garage/garage-data-tabs"
 
 // Type Definitions
-type RecentEvent = { id: string; eventType: string; date: Date; regNumber: string; verificationTier: string; }
+type RecentEvent = {
+  id: string;
+  eventType: string;
+  date: Date;
+  regNumber: string;
+  verificationTier: string;
+}
 
 type GarageDashboardProps = {
   garage: {
+    id: string; // <--- FIX: Added the missing id property
     name: string;
     slug: string;
     isVerified: boolean | null;
@@ -19,7 +26,6 @@ type GarageDashboardProps = {
     dataAccuracyScore: number;
   };
   recentEvents?: RecentEvent[];
-  // FIX: Replace 'any[]' with explicit types
   staffMembers?: StaffMember[];
   fleetVehicles?: FleetVehicle[];
 }
@@ -58,7 +64,7 @@ export function GarageDashboard({ garage, metrics, recentEvents = [], staffMembe
           />
         </div>
         <div>
-          <GarageActions />
+          <GarageActions garageId={garage.id} fleetVehicles={fleetVehicles} />
         </div>
       </div>
       
